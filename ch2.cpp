@@ -1,0 +1,342 @@
+/*
+	Boilerplate for all OpenGL projects using OpenGLBook.com
+	(Could probably put this in a class for future use)
+*/
+
+// STOP TELLING ME SPRINTF IS UNSAFE, DAMMIT
+#define _CRT_SECURE_NO_WARNINGS
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <GL/glew.h>
+#include <GL/freeglut.h>
+
+// Title of project goes here
+#define WINDOW_TITLE_PREFIX "Ch 2"
+
+// Globals for window vars (will be fields in a forthcoming class)
+int
+	curWidth = 800,
+	curHeight = 600,
+	windowHandle = 0;
+
+// For performance testing
+unsigned framecount = 0;
+
+GLuint
+	vertexShaderId,
+	fragmentShaderId,
+	programId,
+	vaoId,
+	vboId,
+	colorBufferId;
+
+const GLchar* vertexShader = {
+	"#version 400\n"\
+
+	"layout(location=0) in vec4 in_Position;\n"\
+	"layout(location=1) in vec4 in_Color;\n"\
+	"out vec4 ex_Color;\n"\
+
+	"void main(void) {\n"\
+	"	gl_Position = in_Position;\n"\
+	"	ex_Color = in_Color;\n"\
+	"}"
+};
+
+const GLchar* fragmentShader = {
+	"#version 400\n"\
+
+	"in vec4 ex_Color;\n"\
+	"out vec4 out_Color;\n"\
+
+	"void main(void) {\n"\
+	"	out_Color = ex_Color;\n"\
+	"}"
+};
+
+
+// Prototypes (Ch1)
+void init(int, char* []);
+void initWindow(int, char* []);
+void resize(int, int);
+void render(void);
+void timer(int);
+void idle(void);
+
+// Ch2
+void cleanup(void);
+void createVBO(void);
+void destroyVBO(void);
+void createShaders(void);
+void destroyShaders(void);
+
+
+int main(int argc, char* argv[]) {
+	init(argc, argv);
+	glutMainLoop();
+	exit(EXIT_SUCCESS);
+}
+
+
+void init(int argc, char* argv[]) {
+	GLenum glewInitResult;
+
+	initWindow(argc, argv);
+
+	// Initialize API for OpenGL 4.0 functions
+	glewExperimental = GL_TRUE;
+	glewInitResult = glewInit();
+	if (glewInitResult != GLEW_OK) {
+		fprintf(
+			stderr,
+			"ERROR: %s\n",
+			glewGetErrorString(glewInitResult)
+		);
+		exit(EXIT_FAILURE);
+	}
+
+	fprintf(
+		stdout,
+		"INFO: OpenGL Version: %s\nRenderer Version: %s\n",
+		glGetString(GL_VERSION),
+		glGetString(GL_RENDERER)
+	);
+
+	createShaders();
+	createVBO();
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+
+void initWindow(int argc, char* argv[]) {
+	glutInit(&argc, argv);
+
+	glutInitContextVersion(4, 0);
+	glutInitContextFlags(GLUT_FORWARD_COMPATIBLE);
+	glutInitContextProfile(GLUT_CORE_PROFILE);
+
+	glutSetOption(
+		GLUT_ACTION_ON_WINDOW_CLOSE,
+		GLUT_ACTION_GLUTMAINLOOP_RETURNS
+	);
+
+	glutInitWindowSize(curWidth, curHeight);
+	glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
+
+	windowHandle = glutCreateWindow(WINDOW_TITLE_PREFIX);
+
+	if (windowHandle < 1) {
+		fprintf(
+			stderr,
+			"ERROR: Could not create a new rendering window\n"
+		);
+		exit(EXIT_FAILURE);
+	}
+
+	glutReshapeFunc(resize);
+	glutDisplayFunc(render);
+	glutIdleFunc(idle);
+	glutTimerFunc(0, timer, 0);
+	glutCloseFunc(cleanup);
+}
+
+
+void resize(int x, int y) {
+	curWidth = x;
+	curHeight = y;
+	glViewport(0, 0, curWidth, curHeight);
+}
+
+
+void render(void) {
+	++framecount;
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	// Tells GPU to draw triangles connecting the vertexes,
+	// The index of the first one to draw
+	// and how many vertexes there are
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+
+	glutSwapBuffers();
+	glutPostRedisplay();
+}
+
+
+void timer(int val) {
+	if (val) {
+		char* tmpStr = (char*)malloc(512 + strlen(WINDOW_TITLE_PREFIX));
+
+		sprintf(
+			tmpStr,
+			"%s: %d Frames Per Second @ %d x %d",
+			WINDOW_TITLE_PREFIX,
+			framecount * 4,
+			curWidth,
+			curHeight
+		);
+
+		glutSetWindowTitle(tmpStr);
+		free(tmpStr);
+	}
+
+	framecount = 0;
+	glutTimerFunc(250, timer, 1);
+}
+
+void idle(void) { glutPostRedisplay(); }
+
+
+void cleanup(void) {
+	destroyShaders();
+	destroyVBO();
+}
+
+/*
+	Create vector buffer objects. 
+	Essentially, tell GPU where significant points are, and what to color those points
+*/
+void createVBO(void) {
+	// Array of 4D coords x, y, z and w (book says don't worry about w for now) x and y make up 2d plane
+	GLfloat vertices[] = {
+		 -0.8f, -0.8f, 0.0f, 1.0f,
+		 0.0f,  0.8f, 0.0f, 1.0f,
+		 0.8f, -0.8f, 0.0f, 1.0f
+	};
+
+	// In order colors for the vectors
+	GLfloat colors[] = {
+		1.0f, 0.0f, 0.0f, 1.0f,
+		0.0f, 1.0f, 0.0f, 1.0f,
+		0.0f, 0.0f, 1.0f, 1.0f
+	};
+
+	// Called to "unset" any erstwhile errors; disregard the ret val
+	GLenum errCheckVal = glGetError();
+
+	// Creates a VertexArray obj in the GPU's memory
+	// Just contains metadata about v-array, not actual data
+	glGenVertexArrays(1, &vaoId);
+	glBindVertexArray(vaoId);
+
+	glGenBuffers(1, &vboId);				// Generate buffer in GPU memory
+	glBindBuffer(GL_ARRAY_BUFFER, vboId);	// Then specify what kind of buffer this is
+
+	// Copies actual data of vertices into buffer that was just bound
+	// Tells it where it is, how large it is, and how it will be used
+	// Static_draw == we aren't going to ever change it
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	
+	// Provide necessary metadata so GPU knows how to use the raw binary it just copied
+	// The first number is its index that is used in the shader functions/to reference it here/everywhere
+	// Second is dimensionality of each vector
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, 0);		
+	
+	// Uses the vertex data "for drawing purposes" (I think it just prepares the GPU to draw it, but doesn't actually yet)
+	glEnableVertexAttribArray(0);								
+
+	// Do the same thing to load colors of vertexes into GPU / prepare them for drawing
+	glGenBuffers(1, &colorBufferId);
+	glBindBuffer(GL_ARRAY_BUFFER, colorBufferId);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(colors), colors, GL_STATIC_DRAW);
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(1);
+
+	errCheckVal = glGetError();
+	if (errCheckVal != GL_NO_ERROR) {
+		fprintf(
+			stderr,
+			"ERROR: Could not create a VBO: %s\n",
+			gluErrorString(errCheckVal)
+		);
+
+		exit(EXIT_FAILURE);
+	}
+}
+
+void destroyVBO(void) {
+	GLenum errCheckVal = glGetError();
+
+	glDisableVertexAttribArray(1);
+	glDisableVertexAttribArray(0);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glDeleteBuffers(1, &colorBufferId);
+	glDeleteBuffers(1, &vboId);
+
+	glBindVertexArray(0);
+	glDeleteVertexArrays(1, &vaoId);
+
+	errCheckVal = glGetError();
+	if (errCheckVal != GL_NO_ERROR) {
+		fprintf(
+			stderr,
+			"ERROR: Could not destroy the VBO: %s\n",
+			gluErrorString(errCheckVal)
+		);
+
+		exit(EXIT_FAILURE);
+	}
+}
+
+/*
+	Shaders are like little C programs that you can input as strings
+	They use a language called GLSL to do this, and can reference objects in
+	the GPU via their index
+*/
+void createShaders(void) {
+	GLenum errCheckVal = glGetError();
+
+	// Compile the vert shader
+	vertexShaderId = glCreateShader(GL_VERTEX_SHADER);			// Create a new shader object
+	glShaderSource(vertexShaderId, 1, &vertexShader, NULL);		// Tell OpenGL where to find the string to be compiled / where to put the pointer (arg 1)
+	glCompileShader(vertexShaderId);							// Then compile that string
+
+	// Compile the frag shader
+	fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(fragmentShaderId, 1, &fragmentShader, NULL);
+	glCompileShader(fragmentShaderId);
+
+	// Now combine the two into a single program object
+	programId = glCreateProgram();
+	glAttachShader(programId, vertexShaderId);
+	glAttachShader(programId, fragmentShaderId);
+	glLinkProgram(programId);
+	
+	// Makes this the program used until this function is called again
+	glUseProgram(programId);
+
+	errCheckVal = glGetError();
+	if (errCheckVal != GL_NO_ERROR) {
+		fprintf(
+			stderr,
+			"ERROR: Could not create the shaders: %s \n",
+			gluErrorString(errCheckVal)
+		);
+
+		exit(EXIT_FAILURE);
+	}
+}
+
+void destroyShaders(void) {
+	GLenum errCheckVal = glGetError();
+
+	glUseProgram(0);
+	glDetachShader(programId, vertexShaderId);
+	glDetachShader(programId, fragmentShaderId);
+
+	glDeleteShader(vertexShaderId);
+	glDeleteShader(fragmentShaderId);
+	glDeleteProgram(programId);
+
+	errCheckVal = glGetError();
+	if (errCheckVal != GL_NO_ERROR) {
+		fprintf(
+			stderr,
+			"ERROR: Could not destroy the shaders: %s \n",
+			gluErrorString(errCheckVal)
+		);
+
+		exit(EXIT_FAILURE);
+	}
+}
